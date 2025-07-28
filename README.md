@@ -1,86 +1,118 @@
 # 🧹 Suppression du job `yearly` invisible — Proxmox VE 8.4.5 (Bug GUI)
 
-## 🎯 Objectif
+📘 README — Suppression d’une tâche de backup planifiée dans Proxmox VE 
 
-Supprimer un **job de sauvegarde `yearly`** encore affiché dans **Datacenter > Backup**, alors qu’il **n’apparaît pas dans `/etc/pve/vzdump.cron`**, ni ne répond pas au bouton **"Remove"** dans l’interface Web Proxmox.
+🎯 Objectif
+Supprimer une tâche de sauvegarde planifiée visible dans l’interface Proxmox, mais impossible à supprimer via le bouton `Remove` (grisé ou inactif).
 
----
+✅ Contexte utilisateur vérifié
+- Version Proxmox VE : 8.4.5
+- Nom du stockage utilisé : pbs-xxxxxxxx
+- Tâches visibles dans l’interface, mais aucune entrée dans :
+  - /etc/pve/vzdump.cron
+  - /etc/pve/jobs/
+  - /etc/pve/datacenter.cfg.d/
+- Seule méthode fonctionnelle = interrogation via API `pvesh`.
 
-## 🐞 Problème identifié
+🧪 Commandes exécutées
 
-- Le **job `yearly`** est visible dans l’onglet `Datacenter > Backup`
-- Le **bouton "Remove" ne fonctionne pas** (aucune action, aucun log, aucun retour)
-- Aucun job ne figure dans :
-  ```bash
-  cat /etc/pve/vzdump.cron
-  ```
-- ❗ Bug reconnu dans **Proxmox VE 8.4.x** :
-  - [forum.proxmox.com - remove button not working](https://forum.proxmox.com/threads/remove-button-for-vm-operation-in-gui-not-working.162859)
-  - [forum.proxmox.com - vzdump job ghost](https://forum.proxmox.com/threads/backup-job-persist-after-removal.123376/)
-  - [bugzilla.proxmox.com issue #4883](https://bugzilla.proxmox.com/show_bug.cgi?id=4883)
+nano /etc/pve/vzdump.cron
+ls -l /etc/pve/jobs/
+# → ls: cannot access '/etc/pve/jobs/': No such file or directory
+ls -l /etc/pve/datacenter.cfg.d/
+# → ls: cannot access '/etc/pve/datacenter.cfg.d/': No such file or directory
 
----
+🔍 Tâches détectées via l’API
 
-## ✅ Procédure VSN utilisée
-
-### 1. 🔍 Lister les jobs `vzdump` via l'API :
-
-```bash
 pvesh get /cluster/backup
-```
+┌──────────────────────┐
+│ id                   │
+╞══════════════════════╡
+│ backup-141dd42e-8105 │
+├──────────────────────┤
+│ backup-5b65201d-f95c │
+├──────────────────────┤
+│ backup-e8198075-0fed │
+└──────────────────────┘
 
-**Retour exemple :**
+📄 Contenu exact des 3 tâches
 
-```
-backup-141dd42e-8105
-backup-488a9abd-c43f   ← 👈 celui avec "schedule": "yearly"
-backup-e8198075-0fed
-```
+pvesh get /cluster/backup/backup-141dd42e-8105
+┌──────────────────┬───────────────────────────────────────────────┐
+│ key              │ value                                         │
+╞══════════════════╪═══════════════════════════════════════════════╡
+│ enabled          │ 1                                             │
+│ fleecing         │ {"enabled":"0"}                               │
+│ id               │ backup-141dd42e-8105                          │
+│ mailnotification │ always                                        │
+│ mailto           │ XXXXXXXXXXXX@gmail.com                        │
+│ mode             │ snapshot                                      │
+│ node             │ pve                                           │
+│ notes-template   │ {{vmid}} {{guestname}}, {{node}}, {{cluster}} │
+│ repeat-missed    │ 1                                             │
+│ schedule         │ mon,thu 02:30                                 │
+│ storage          │ pbs-xxxxxxxx                                  │
+│ type             │ vzdump                                        │
+│ vmid             │ 103,101,102,104                               │
+└──────────────────┴───────────────────────────────────────────────┘
 
----
+pvesh get /cluster/backup/backup-5b65201d-f95c
+┌───────────────────┬────────────────────────┐
+│ key               │ value                  │
+╞═══════════════════╪════════════════════════╡
+│ enabled           │ 1                      │
+│ fleecing          │ {"enabled":"0"}        │
+│ id                │ backup-5b65201d-f95c   │
+│ mailnotification  │ always                 │
+│ mailto            │ XXXXXXXXXXXX@gmail.com │
+│ mode              │ stop                   │
+│ notes-template    │ {{guestname}}          │
+│ notification-mode │ legacy-sendmail        │
+│ schedule          │ yearly                 │
+│ storage           │ pbs-xxxxxxxx           │
+│ type              │ vzdump                 │
+│ vmid              │ 20232400,20308096      │
+└───────────────────┴────────────────────────┘
 
-### 2. 📋 Vérifier les détails de chaque job :
+pvesh get /cluster/backup/backup-e8198075-0fed
+┌──────────────────┬───────────────────────────────────────────────┐
+│ key              │ value                                         │
+╞══════════════════╪═══════════════════════════════════════════════╡
+│ enabled          │ 1                                             │
+│ fleecing         │ {"enabled":"0"}                               │
+│ id               │ backup-e8198075-0fed                          │
+│ mailnotification │ always                                        │
+│ mailto           │ XXXXXXXXXXXX@gmail.com                        │
+│ mode             │ stop                                          │
+│ node             │ pve                                           │
+│ notes-template   │ {{vmid}} {{guestname}}, {{node}}, {{cluster}} │
+│ repeat-missed    │ 1                                             │
+│ schedule         │ mon,thu 04:00                                 │
+│ storage          │ pbs-xxxxxxxx                                  │
+│ type             │ vzdump                                        │
+│ vmid             │ 20308096,20009000,20232400,20401080,20508080  │
+└──────────────────┴───────────────────────────────────────────────┘
 
-```bash
-pvesh get /cluster/backup/backup-488a9abd-c43f
-```
+🗑️ Suppression de la tâche `yearly`
 
-**Sortie confirmée :**
+pvesh delete /cluster/backup/backup-5b65201d-f95c
 
-- `"schedule": "yearly"`
-- `"vmid": "102,20232400"`
-- `"storage": "pbs-marechal"`
+Vérification :
 
----
+pvesh get /cluster/backup
+┌──────────────────────┐
+│ id                   │
+╞══════════════════════╡
+│ backup-141dd42e-8105 │
+├──────────────────────┤
+│ backup-e8198075-0fed │
+└──────────────────────┘
 
-### 3. 💣 Supprimer le job via l’API (VSN) :
+✅ La tâche backup-5b65201d-f95c a bien été supprimée avec effet immédiat.
 
-```bash
-pvesh delete /cluster/backup/backup-488a9abd-c43f
-```
+📌 Résumé final
 
----
-
-### 4. 🔁 Rafraîchissement :
-
-- Recharger l’interface Web avec **`CTRL+F5`**
-- Le job `yearly` disparaît définitivement
-
----
-
-## 🧼 État final
-
-| Élément             | Statut                            |
-| --------------------- | --------------------------------- |
-| `vzdump.cron`       | ✅ Vide                           |
-| `yearly` visible    | ❌ Supprimé                      |
-| Bouton Remove         | ❌ Inopérant (bug GUI confirmé) |
-| Suppr API (`pvesh`) | ✅ Fonctionnelle (VSN)            |
-
----
-
-## 🛡️ Statut : ✅ Nettoyage validé (VSN)
-
-- Plus aucun job résiduel
-- Pas d'impact sur les autres backups
-- Utilisation API conforme aux bonnes pratiques Proxmox
+| ID                       | Schedule      | Mode     | VMIDs                               |
+|--------------------------|---------------|----------|-------------------------------------|
+| backup-141dd42e-8105     | Mon,Thu 02:30 | snapshot | 103,101,102,104                     |
+| backup-e8198075-0fed     | Mon,Thu 04:00 | stop     | 20308096,20009000,20232400,...      |
